@@ -1,0 +1,38 @@
+# dependencies
+/node_modules/
+
+# builds
+/build/
+/dist/
+
+# Xcode
+*.xcworkspace
+*.xcodeproj/
+xcuserdata/
+
+# Android
+*.apk
+*.keystore
+/android/app/build/
+/android/build/
+/android/.gradle/
+
+# macOS
+*.app
+
+# Windows
+*.sln
+*.csproj
+
+# iOS
+DerivedData/
+
+# Metro bundler cache
+/metro-bundler-cache/
+
+# testing
+/coverage/
+
+# misc
+.DS_Store
+.env

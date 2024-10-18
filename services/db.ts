@@ -21,6 +21,12 @@ export const createTables = () => {
         amount REAL
       );`
     );
+    tx.executeSql(
+      `CREATE TABLE IF NOT EXISTS budget (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount REAL
+      );`
+    );
   });
 };
 
@@ -71,21 +77,34 @@ export const getReceiptsForLast30Days = (callback: (data: any) => void) => {
 
 export const insertOrUpdatePaycheck = (amount: number) => {
   db.transaction((tx) => {
-    // Clear existing paycheck entries
-    tx.executeSql(`DELETE FROM paycheck;`, [], (txObj, resultSet) => {
-      // After clearing, insert the new paycheck amount
-      tx.executeSql(
-         `INSERT INTO paycheck (id, amount) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET amount = ?;`,
-      [amount, amount], // If there's a conflict, this updates the existing amount
-        (txObj, error) => {
-          console.error('Error inserting paycheck: ', error);
-          return false
-        }
-      );
-    }, (txObj, error) => {
-      console.error('Error deleting existing paychecks: ', error);
-      return false
-    });
+    // Insert the new paycheck amount, update if conflict
+    tx.executeSql(
+      `INSERT INTO paycheck (id, amount) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET amount = ?;`,
+      [amount, amount],  // Pass the amount twice, once for INSERT and once for UPDATE
+      () => {
+        // console.log('Paycheck updated successfully.');
+      },
+      (txObj, error) => {
+        console.error('Error inserting/updating paycheck: ', error);
+        return false;
+      }
+    );
+  });
+};
+
+export const insertOrUpdateBudget = (amount: number) => {
+  db.transaction((tx) => {
+    // Insert the new budget amount, update if conflict
+    tx.executeSql(
+      `INSERT INTO budget (id, amount) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET amount = ?;`,
+      [amount, amount],  // Pass the amount twice, once for INSERT and once for UPDATE
+      () => {
+      },
+      (txObj, error) => {
+        console.error('Error inserting/updating budget: ', error);
+        return false;
+      }
+    );
   });
 };
 
@@ -136,6 +155,27 @@ export const fetchPaycheck = (callback: (amount: number) => void) => {
       },
       (txObj, error) => {
         console.error('Error fetching paycheck: ', error);
+        return false
+      }
+    );
+  });
+};
+
+// Function to fetch the budget amount
+export const fetchBudget = (callback: (amount: number) => void) => {
+  db.transaction((tx) => {
+    tx.executeSql(
+      `SELECT amount FROM budget WHERE id = 1;`, // Fetch budget with ID 1
+      [1], // Pass ID as parameter
+      (txObj, { rows }) => {
+        if (rows.length > 0) {
+          callback(rows.item(0).amount); // Use rows.item(0) instead of rows._array[0]
+        } else {
+          callback(0); // If no budget saved, return 0
+        }
+      },
+      (txObj, error) => {
+        console.error('Error fetching budget: ', error);
         return false
       }
     );

@@ -1,42 +1,45 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Text, View, StyleSheet, Dimensions, ScrollView, TextInput } from 'react-native';
-import { LineChart } from 'react-native-chart-kit'; 
-import { getReceiptsForLast30Days, fetchPaycheck, insertOrUpdatePaycheck, createTables, dropReceiptTable } from '../../services/db';
+import { LineChart } from 'react-native-chart-kit';
 import { Bar } from 'react-native-progress';
 import { useFocusEffect } from '@react-navigation/native';
+import { getReceiptsForLast30Days, fetchPaycheck, fetchBudget, insertOrUpdatePaycheck, insertOrUpdateBudget, createTables } from '../../services/db';
 
 export default function Index() {
   const [total, setTotal] = useState(0);
   const [dailyTotals, setDailyTotals] = useState<number[]>(Array(30).fill(0));
   const [paycheck, setPaycheck] = useState(0);
   const [inputPaycheck, setInputPaycheck] = useState('');
+  const [budget, setBudget] = useState(0);
+  const [inputBudget, setInputBudget] = useState('');
 
-  // Function to fetch receipts and paycheck
   const fetchTotal = useCallback(() => {
     getReceiptsForLast30Days((receipts) => {
-      const totalSum = receipts.reduce((sum, receipt) => sum + receipt.total_price, 0);
+      const totalSum = receipts.reduce((sum: any, receipt: { total_price: any; }) => sum + receipt.total_price, 0);
       setTotal(totalSum);
 
       const totalsByDay = Array(30).fill(0);
-      receipts.forEach((receipt) => {
+      receipts.forEach((receipt: any) => {
         const receiptDate = new Date(receipt.date_scanned);
         const dayIndex = 29 - Math.floor((Date.now() - receiptDate.getTime()) / (1000 * 60 * 60 * 24));
         if (dayIndex >= 0 && dayIndex < 30) {
           totalsByDay[dayIndex] += receipt.total_price;
         }
       });
-      
       setDailyTotals(totalsByDay);
     });
 
-    // Fetch the saved paycheck
     fetchPaycheck((savedPaycheck) => {
       setPaycheck(savedPaycheck);
       setInputPaycheck(savedPaycheck.toString());
     });
+
+    fetchBudget((savedBudget) => {
+      setBudget(savedBudget);
+      setInputBudget(savedBudget.toString());
+    });
   }, []);
 
-  // Automatically refresh data when the screen is focused
   useFocusEffect(
     useCallback(() => {
       fetchTotal();
@@ -44,28 +47,43 @@ export default function Index() {
   );
 
   useEffect(() => {
-    // Ensure tables are created on component mount
     createTables();
     fetchTotal();
   }, [fetchTotal]);
 
   const handlePaycheckChange = (text: string) => {
     setInputPaycheck(text);
-
-    // Parse the input as a float and handle potential formatting issues
-    const paycheckAmount = parseFloat(text.replace(/[^0-9.-]+/g,"")); // Remove non-numeric characters
-
+    const paycheckAmount = parseFloat(text.replace(/[^0-9.-]+/g,""));
     if (!isNaN(paycheckAmount) && paycheckAmount > 0) {
-        setPaycheck(paycheckAmount);
-        insertOrUpdatePaycheck(paycheckAmount); // Automatically save paycheck when the user types
+      setPaycheck(paycheckAmount);
+      insertOrUpdatePaycheck(paycheckAmount);
     } else {
-        setPaycheck(0); // Set paycheck to 0 if the input is invalid
-        insertOrUpdatePaycheck(0); // Also update the database with 0
+      setPaycheck(0);
+      insertOrUpdatePaycheck(0);
     }
   };
 
-  // Calculate the spending ratio to display in the progress bar
+  const handleBudgetChange = (text: string) => {
+    setInputBudget(text);
+    const budgetAmount = parseFloat(text.replace(/[^0-9.-]+/g,""));
+    if (!isNaN(budgetAmount) && budgetAmount > 0) {
+      setBudget(budgetAmount);
+      insertOrUpdateBudget(budgetAmount);
+    } else {
+      setBudget(0);
+      insertOrUpdateBudget(0);
+    }
+  };
+
   const spendingRatio = paycheck > 0 ? total / paycheck : 0;
+  const savingsGoalRatio = budget > 0 && paycheck > 0 ? (paycheck - budget) / paycheck : 0;
+
+  // Determine the color of the progress bar
+  const progressBarColor = total > paycheck
+    ? '#FF4F4F' // Red for overspending income
+    : total > (paycheck - budget)
+    ? '#FFD700' // Yellow for overspending budget but within income
+    : '#4CAF50'; // Green for within budget
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -74,34 +92,55 @@ export default function Index() {
         <Text style={styles.amount}>${total.toFixed(2)}</Text>
       </View>
 
-      {/* Input for bi-weekly paycheck */}
       <View style={styles.paycheckContainer}>
-        <Text style={styles.paycheckText}>Enter your bi-weekly paycheck:</Text>
+        <Text style={styles.paycheckText}>Enter your estimated monthly income:</Text>
         <TextInput
-            style={styles.input}
-            value={inputPaycheck}
-            placeholder="                                                 "
-            keyboardType="numeric"
-            onChangeText={handlePaycheckChange}
+          style={styles.input}
+          value={inputPaycheck}
+          placeholder="                                                 "
+          keyboardType="numeric"
+          onChangeText={handlePaycheckChange}
         />
       </View>
 
-      {/* Spending Metric - Progress Bar */}
-      <View style={styles.metricContainer}>
-        <Bar 
-          progress={spendingRatio > 1 ? 1 : spendingRatio} // Cap at 1 (100%)
-          width={Dimensions.get('window').width - 100}
-          height={20}
-          color={spendingRatio > 1 ? '#FF4F4F' : '#4CAF50'} // Red if overspending, green otherwise
-          borderRadius={5}
+      <View style={styles.paycheckContainer}>
+        <Text style={styles.paycheckText}>Enter how much you would like to save:</Text>
+        <TextInput
+          style={styles.input}
+          value={inputBudget}
+          placeholder="                                                 "
+          keyboardType="numeric"
+          onChangeText={handleBudgetChange}
         />
-        {spendingRatio > 1 ? (
+      </View>
+
+      <View style={styles.metricContainer}>
+        <View style={styles.progressContainer}>
+          <Bar 
+            progress={spendingRatio > 1 ? 1 : spendingRatio}  // Progress based on spending relative to paycheck
+            width={Dimensions.get('window').width - 100}
+            height={20}
+            color={progressBarColor}
+            borderRadius={5}
+          />
+          {savingsGoalRatio > 0 && savingsGoalRatio < 1 && (
+            <View
+              style={[styles.savingsMarker, { left: `${savingsGoalRatio * 100}%` }]}  // Marker based on budget relative to paycheck
+            />
+          )}
+        </View>
+
+        {total > paycheck ? (
           <Text style={styles.warningText}>
             You are overspending by ${Math.abs((total - paycheck).toFixed(2))}.
           </Text>
+        ) :  total > (paycheck - budget) ? (
+          <Text style={styles.warningText}>
+            You are overspending your budget by ${Math.abs((total - budget).toFixed(2))}.
+          </Text>
         ) : (
           <Text style={styles.safeText}>
-            You are within your paycheck limit.
+            You are within your budget.
           </Text>
         )}
       </View>
@@ -109,11 +148,7 @@ export default function Index() {
       <LineChart
         data={{
           labels: ['30', '25', '20', '15', '10', '5'],
-          datasets: [
-            {
-              data: dailyTotals,
-            },
-          ],
+          datasets: [{ data: dailyTotals }],
         }}
         width={Dimensions.get('window').width - 40}
         height={220}
@@ -124,18 +159,15 @@ export default function Index() {
           backgroundGradientTo: '#2bcaff',
           decimalPlaces: 2,
           color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-          style: {
-            borderRadius: 16,
-          },
+          style: { borderRadius: 16 },
         }}
-        style={{
-          marginVertical: 8,
-          borderRadius: 16,
-        }}
+        style={{ marginVertical: 8, borderRadius: 16 }}
         withDots={true}
-        getDotColor={(dataPoint, dataPointIndex) => {
-          return dataPointIndex % 5 === 0 || dataPointIndex === 29 ? 'rgba(255, 255, 255, 1)' : 'transparent';
-        }}
+        getDotColor={(dataPoint, dataPointIndex) =>
+          dataPointIndex % 5 === 0 || dataPointIndex === 29
+            ? 'rgba(255, 255, 255, 1)'
+            : 'transparent'
+        }
       />
     </ScrollView>
   );
@@ -201,16 +233,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  metricText: {
-    color: '#fff',
-    fontSize: 16,
+  progressContainer: {
+    position: 'relative',
+    width: Dimensions.get('window').width - 100,
+  },
+  savingsMarker: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 2,
+    backgroundColor: '#FFEB3B',
   },
   warningText: {
-    color: '#FF4F4F',
+    color: '#FFD700',
     fontSize: 16,
+    marginTop: 10,
   },
   safeText: {
     color: '#4CAF50',
     fontSize: 16,
+    marginTop: 10,
   },
 });

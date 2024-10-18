@@ -2,6 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, TextInput, Button, TouchableOpacity, Switch } from 'react-native';
 import { fetchReceipts, createTables, insertReceipt } from '../../services/db';
 import { useFocusEffect } from '@react-navigation/native';
+import Entypo from '@expo/vector-icons/Entypo';
+import { Picker } from '@react-native-picker/picker';
 
 export default function ReceiptsScreen() {
   const [receipts, setReceipts] = useState<any[]>([]);
@@ -10,6 +12,14 @@ export default function ReceiptsScreen() {
   const [category, setCategory] = useState('');
   const [isRecurring, setIsRecurring] = useState(false); // New state for recurring switch
   const [recurrenceType, setRecurrenceType] = useState('current_date'); // New state for recurrence type
+  const [useTodayDate, setUseTodayDate] = useState(true); // New state for "Use today's date?" switch
+  const [selectedDate, setSelectedDate] = useState(''); // New state for custom date input
+
+  const categories = [
+    'Utilities', 'Gas', 'Dining', 'Groceries', 'Transportation', 'Pet Care',
+    'Entertainment', 'Health & Wellness', 'Apparel', 'Office Supplies', 
+    'Education', 'Personal Care', 'Travel', 'Misc'
+  ];
 
   useEffect(() => {
     createTables(); // Ensure the table is created
@@ -24,17 +34,21 @@ export default function ReceiptsScreen() {
   const handleSubmit = () => {
     const price = parseFloat(totalPrice);
     if (!isNaN(price) && category) {
-      insertReceipt(price, category, isRecurring, isRecurring ? recurrenceType : null); // Insert receipt with recurrence info
+      const dateToUse = useTodayDate ? new Date().toISOString().split('T')[0] : selectedDate; // Use selected date or today's date
+      insertReceipt(price, category, isRecurring, isRecurring ? recurrenceType : null, dateToUse); // Pass the selected or today's date
       setTotalPrice('');
-      setCategory('');
+      setCategory('Misc');
       setFormExpanded(false);
       setIsRecurring(false); // Reset recurring state
+      setUseTodayDate(true); // Reset to use today's date
+      setSelectedDate(''); // Clear custom date
       fetchReceipts(setReceipts);
     }
   };
 
   const renderItem = ({ item }: { item: any }) => (
     <View style={[styles.item, item.is_recurring ? styles.recurringItem : null]}>
+      <Entypo name="cycle" size={24} color="black" style={[styles.recurringIcon, item.is_recurring ? styles.recurringIcon : styles.hidden]} />
       <Text style={styles.priceText}>${item.total_price.toFixed(2)}</Text>
       <Text style={styles.dateText}>Date: {item.date_scanned}</Text>
       <Text style={styles.categoryText}>Category: {item.category}</Text>
@@ -63,13 +77,15 @@ export default function ReceiptsScreen() {
               value={totalPrice}
               onChangeText={setTotalPrice}
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Category"
-              placeholderTextColor="#999"
-              value={category}
-              onChangeText={setCategory}
-            />
+            <Picker
+              selectedValue={category}
+              style={styles.picker}
+              onValueChange={(itemValue) => setCategory(itemValue)}
+            >
+              {categories.map((cat) => (
+                <Picker.Item key={cat} label={cat} value={cat} />
+              ))}
+            </Picker>
 
             {/* Switch for recurring payment */}
             <View style={styles.switchContainer}>
@@ -99,6 +115,26 @@ export default function ReceiptsScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+            )}
+
+            {/* Switch for using today's date */}
+            <View style={styles.switchContainer}>
+              <Text style={styles.switchLabel}>Use today's date?</Text>
+              <Switch
+                value={useTodayDate}
+                onValueChange={(value) => setUseTodayDate(value)}
+              />
+            </View>
+
+            {/* Show date input if 'Use today's date?' is turned off */}
+            {!useTodayDate && (
+              <TextInput
+                style={styles.input}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor="#999"
+                value={selectedDate}
+                onChangeText={setSelectedDate}
+              />
             )}
 
             <Button title="Submit" onPress={handleSubmit} />
@@ -145,7 +181,17 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   recurringItem: {
-    backgroundColor: 'linear-gradient(to right, #008CBA, #32CD32)', // Blue to green gradient for recurring items
+    backgroundColor: '#004b63',
+    padding: 15,
+    borderRadius: 10,
+    marginVertical: 8,
+    width: '100%',
+  },
+  recurringIcon: {
+    color: '#f5f5f5',
+    position: 'absolute',
+    top: 10,
+    right: 10,
   },
   priceText: {
     fontSize: 22,
@@ -178,6 +224,13 @@ const styles = StyleSheet.create({
   formContainer: {
     marginTop: 10,
     width: '100%',
+  },
+  picker: {
+    backgroundColor: '#2e2f32',
+    color: '#fff',
+    borderRadius: 5,
+    marginBottom: 10,
+    height: 50,
   },
   input: {
     backgroundColor: '#2e2f32',
@@ -214,5 +267,9 @@ const styles = StyleSheet.create({
   },
   choiceText: {
     color: '#fff',
+    fontSize: 14,
+  },
+  hidden: {
+    fontSize: 0,
   },
 });
